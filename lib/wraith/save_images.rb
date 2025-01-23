@@ -86,7 +86,7 @@ class Wraith::SaveImages
         end
       rescue => e
         logger.error "#{e}\n  URL = #{url}"
-        create_invalid_image(filename, width, invalid_image_name)
+        create_invalid_image(filename, width)
       end
     end
   end
@@ -104,7 +104,8 @@ class Wraith::SaveImages
         'force-device-scale-factor',
         'window-size=1200,1500',
         'hide-scrollbars',
-        'ignore-certificate-errors'
+        'ignore-certificate-errors',
+        'wm-window-animations-disabled'
       ].each { |arg| options.add_argument("--#{arg}") }
       Selenium::WebDriver.for :chrome, options: options
     end
@@ -115,6 +116,8 @@ class Wraith::SaveImages
     width  = driver.execute_script("return Math.max(document.body.scrollWidth, document.body.offsetWidth, document.documentElement.clientWidth, document.documentElement.scrollWidth, document.documentElement.offsetWidth);")
     height = driver.execute_script("return Math.max(document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight);")
     driver.manage.window.resize_to(width, height)
+    # logger.debug "Sleeping for 5 seconds after resizing window"
+    sleep 5
   end
 
   # crop an image around the coordinates of an element
@@ -136,14 +139,16 @@ class Wraith::SaveImages
           driver.manage.window.resize_to(width, height || 1500)
           driver.navigate.to url
           driver.manage.timeouts.implicit_wait = wraith.settle
+          # Resize page before running before_capture commands
+          resize_to_fit_page(driver) unless height
           driver.execute_script(File.read(global_before_capture)) if global_before_capture
           driver.execute_script(File.read(path_before_capture)) if path_before_capture
-          resize_to_fit_page(driver) unless height
           driver.save_screenshot(new_file_name)
-          crop_selector(driver, selector, new_file_name) if selector && selector.length > 0
+          logger.debug "Saved Chrome screenshot: " + new_file_name if image_was_created new_file_name
+          # crop_selector(driver, selector, new_file_name) if selector && selector.length > 0
           break
         rescue Net::ReadTimeout => e
-          logger.error "Got #{e} on attempt #{attempt} at screen size #{screensize}. URL = #{url}"
+          logger.error "Got #{e} on attempt #{attempt} at screen size #{screen_size}. URL = #{url}"
         end
       end
     end
@@ -177,9 +182,9 @@ class Wraith::SaveImages
     wraith.resize or File.exist? filename
   end
 
-  def create_invalid_image(filename, width, invalid_image_name)
+  def create_invalid_image(filename, width)
     logger.warn "Using fallback image instead"
-    invalid = File.expand_path("../../assets/#{invalid_image_name}", File.dirname(__FILE__))
+    invalid = File.expand_path("../../assets/invalid1.jpg", File.dirname(__FILE__))
     FileUtils.cp invalid, filename
 
     set_image_width(filename, width)
